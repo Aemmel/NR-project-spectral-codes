@@ -21,14 +21,45 @@ class spec_decom:
         self.func_SBN_dr(2*N)
         self.func_SBN_ddr(2*N)
 
+        # save basis for values as copies, to allow greater numba speedup
+
+        # for alpha, chi, K
+        self.even = self.SBN[::2].transpose().copy()
+        self.even_dr = self.SBN_dr[::2].transpose().copy()
+        self.even_ddr = self.SBN_ddr[::2].transpose().copy()
+
+        # for A, B, A_a
+        self.even_m = (self.SBN[2::2, :-1] - self.SBN[0:-2:2, -1]).transpose().copy()
+        self.even_m_dr = (self.SBN_dr[2::2, :-1] - self.SBN_dr[0:-2:2, -1]).transpose().copy()
+        self.even_m_ddr = (self.SBN_ddr[2::2, :-1] - self.SBN_ddr[0:-2:2, -1]).transpose().copy()
+
+        # for Lambda
+        self.odd = self.SBN[1::2, :-1].transpose().copy()
+        self.odd_dr = self.SBN_dr[1::2, :-1].transpose().copy()
+        self.odd_ddr = self.SBN_ddr[1::2, :-1].transpose().copy()
+
     # quadrature points based on
     # chebyshev Gauss Lobatto points for k=1,2,..,N+1
     # beEq. 48 and below
     def quad_points(self, N):
-        k = np.array(range(1, N+2)) # N+2 excluded
+        # k = np.array(range(1, N+2)) # N+2 excluded
+        k = np.arange(1., N + 2.) # N+2 excluded
         x_k = np.cos(np.pi * k / (2. * N + 2))
 
-        return self.L0 * x_k / np.sqrt(1 - x_k**2)
+        r_k = self.L0 * x_k / np.sqrt(1. - x_k**2)
+
+        return r_k
+
+    def quadrature(self, f):
+        """ quadrature at quadrate points r_k
+        provide: f(r_k)
+
+        method used: https://en.wikipedia.org/wiki/Clenshaw%E2%80%93Curtis_quadrature#Integration_on_infinite_and_semi-infinite_intervals
+        """
+        N = len(self.r_k) - 1 # r_k is N+1 points
+        n_k = np.pi * np.arange(1., N+2) / (2*N + 2)
+
+        return self.L0 * np.pi / (2*N+2.) * np.sum( (f / np.sin(n_k)**2)[1:-1] )
 
     # even and odd sines SB_2n(r), SB_2n+1(r)
     # Eq. 38, 39
@@ -58,9 +89,9 @@ class spec_decom:
             elif n == 1:
                 self.SBN_dr[n] = 2. * L0 * (L0**2 - r**2) / (L0**2 + r**2)**2
             else:
-                self.SBN_dr[n] = (2.*L0**2 * self.func_SBN(n-1) - (L0**2+r**2)
-                    *(-2.*r*self.func_SBN_dr(n-1) + L0*np.sqrt(1 + r**2 / L0**2)*self.func_SBN_dr(n-2)) ) \
-                    / (L0*(L0**2 + r**2)*np.sqrt(1 + r**2 / L0**2))
+                self.SBN_dr[n] = (2.*L0**2 * self.func_SBN(n-1) - (L0**2+r**2) \
+                    * (-2. * r * self.func_SBN_dr(n-1) + L0 * np.sqrt(1 + r**2 / L0**2) * self.func_SBN_dr(n-2)) ) \
+                    / (L0*(L0**2 + r**2)*np.sqrt(1. + r**2 / L0**2))
         
         return self.SBN_dr[n]
     
@@ -72,12 +103,12 @@ class spec_decom:
             L0 = self.L0
             r = self.r_k
             if n == 0:
-                self.SBN_ddr[n] = (- L0**2 + 2. * r**2) / ( (L0**2 + r**2)**2 * np.sqrt(1 + r**2 / L0**2))
+                self.SBN_ddr[n] = (- L0**2 + 2. * r**2) / ( (L0**2 + r**2)**2 * np.sqrt(1. + r**2 / L0**2))
             elif n == 1:
                 self.SBN_ddr[n] = 4. * L0 * r * (-3. * L0**2 + r**2) / (L0**2 + r**2)**3
             else:
                 self.SBN_ddr[n] = ( - 6. * L0**2 * r * self.func_SBN(n-1) - (L0**2 + r**2) * ( -4. * L0**2 * self.func_SBN_dr(n-1) \
-                    + (L0**2 + r**2)*(-2.*r*self.func_SBN_ddr(n-1) + L0 * np.sqrt(1+r**2 / L0**2) * self.func_SBN_ddr(n-2)) ) ) \
-                    / (L0 * (L0**2 + r**2)**2 * np.sqrt(1 + r**2 / L0**2))
+                    + (L0**2 + r**2)*(-2.*r*self.func_SBN_ddr(n-1) + L0 * np.sqrt(1. + r**2 / L0**2) * self.func_SBN_ddr(n-2)) ) ) \
+                    / (L0 * (L0**2 + r**2)**2 * np.sqrt(1. + r**2 / L0**2))
 
         return self.SBN_ddr[n]
